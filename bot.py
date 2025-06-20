@@ -16,6 +16,7 @@ import re
 import datetime
 from discord import app_commands
 from zoneinfo import available_timezones, ZoneInfo
+from typing import Optional
 
 # Load environment
 load_dotenv()
@@ -114,7 +115,9 @@ def save_config():
         "rcon_password": CONFIG["rcon_password"],
         "guild_id": CONFIG["guild_id"],
         "status_channel_id": BotState.status_channel_id,
-        "timezone": CONFIG.get("timezone", "UTC")  # Default to UTC if not set
+        "timezone": CONFIG.get("timezone", "UTC"),  # Default to UTC if not set
+        "thread_id": CONFIG.get("thread_id"),
+        "message_id": CONFIG.get("message_id")
     }
     with open(CONFIG["config_file"], "w") as f:
         json.dump(config_to_save, f, indent=4)
@@ -134,6 +137,8 @@ def load_config():
     CONFIG["rcon_password"] = data.get("rcon_password")
     CONFIG["guild_id"] = data.get("guild_id")
     CONFIG["timezone"] = data.get("timezone", "UTC")  # Default to UTC if not set
+    CONFIG["thread_id"] = data.get("thread_id")      
+    CONFIG["message_id"] = data.get("message_id")
     BotState.status_channel_id = data.get("status_channel_id")
 
     # Validate essential settings
@@ -284,7 +289,7 @@ async def wait_for_server_ready():
     i = 0
     while True:
         if check_server_ready():
-            # 🟢 Update server start time from logs
+            # Update server start time from logs
             log_time = get_minecraft_start_time()
             if log_time:
                 BotState.server_start_time = log_time
@@ -342,7 +347,7 @@ def get_streak_info(username: str):
 
     return True, streak, now, last_dt
 
-# ✍️ Update claim file
+# Update claim file
 def update_streak_info(username: str, now: datetime.datetime, streak: int):
     if os.path.exists(CLAIMS_FILE):
         with open(CLAIMS_FILE, "r") as f:
@@ -358,7 +363,7 @@ def update_streak_info(username: str, now: datetime.datetime, streak: int):
     with open(CLAIMS_FILE, "w") as f:
         json.dump(claims, f, indent=2)
 
-# 🔍 Parse RCON list output
+# Parse RCON list output
 def parse_rcon_list_output(output: str):
     names = []
     if ":" in output:
@@ -408,7 +413,7 @@ def save_links(data):
     with open(LINK_FILE, "w") as f:
         json.dump(data, f, indent=4)
 
-# 🛠️ Utility to get linked username
+# Utility to get linked username
 def get_linked_username(discord_id: int):
     if not os.path.exists(LINKED_FILE):
         return None
@@ -553,7 +558,7 @@ async def on_ready():
     except Exception as e:
         print(f"❌ Error syncing commands: {e}")
 
-    # 📢 Send "starting up" message to channel if configured
+    # Send "starting up" message to channel if configured
     startup_msg = None
     if BotState.status_channel_id:
         print("📌 Status channel:", BotState.status_channel_id)
@@ -564,7 +569,7 @@ async def on_ready():
             except Exception as e:
                 print(f"⚠️ Couldn't send startup message: {e}")
 
-    # 🕰️ Wait for Minecraft server to fully boot
+    # Wait for Minecraft server to fully boot
     log_time = await get_minecraft_start_time_with_retry()
     if log_time:
         BotState.server_start_time = log_time
@@ -578,7 +583,7 @@ async def on_ready():
     else:
         print("⚠️ Could not determine server start time from log.")
 
-    # ⚙️ Start background services
+    # Start background services
     start_server_watcher()
     start_log_poller()
     bot.loop.create_task(wait_for_server_ready())
@@ -688,12 +693,30 @@ async def statushere(interaction: discord.Interaction):
 # /howtojoin
 @bot.tree.command(name="howtojoin", description="Get instructions on how to join the Minecraft server")
 async def howtojoin(interaction: discord.Interaction):
-    thread_id = 1380156333675905034
-    message_id = 1380159523179860121
+    thread_id = CONFIG.get("thread_id")
+    message_id = CONFIG.get("message_id")
+
+    if not message_id:
+        await interaction.response.send_message(
+            "❌ The join instructions message ID hasn't been configured yet.\nAsk an admin to use `/setserverconfig`.",
+            ephemeral=True
+        )
+        return
 
     try:
-        thread = await bot.fetch_channel(thread_id)
-        message = await thread.fetch_message(message_id)
+        if thread_id:
+            # 🧵 Fetch message from the specified thread
+            thread = await bot.fetch_channel(thread_id)
+            message = await thread.fetch_message(message_id)
+        else:
+            # 📥 Try to fetch from the status channel if available
+            if not BotState.status_channel_id:
+                raise ValueError("No thread or fallback channel defined.")
+            channel = bot.get_channel(BotState.status_channel_id)
+            if not channel:
+                channel = await bot.fetch_channel(BotState.status_channel_id)
+            message = await channel.fetch_message(message_id)
+
         content = message.content or "Instructions not found."
 
         embed = discord.Embed(
@@ -708,11 +731,13 @@ async def howtojoin(interaction: discord.Interaction):
 
     except discord.Forbidden:
         await interaction.response.send_message(
-            "❌ I couldn't send you a DM. Please enable DMs from server members.", ephemeral=True)
+            "❌ I couldn't DM you. Please enable DMs from server members.", ephemeral=True
+        )
     except Exception as e:
-        await interaction.response.send_message(f"⚠️ Failed to fetch instructions: `{e}`", ephemeral=True)
+        await interaction.response.send_message(
+            f"⚠️ Failed to fetch instructions: `{e}`", ephemeral=True
+        )
 
-#setserverconfig
 @bot.tree.command(name="setserverconfig", description="Set Minecraft server connection details and timezone")
 @app_commands.describe(
     server_ip="Server IP address",
@@ -720,7 +745,9 @@ async def howtojoin(interaction: discord.Interaction):
     rcon_port="RCON port",
     rcon_password="RCON password",
     guild_id="Discord server ID for syncing slash commands",
-    timezone="Timezone (e.g., Asia/Manila)"
+    timezone="Timezone (e.g., Asia/Manila)",
+    thread_id="(Optional) Discord thread ID for /howtojoin message",
+    message_id="(Optional) Discord message ID for /howtojoin message"
 )
 async def setserverconfig(
     interaction: discord.Interaction,
@@ -729,19 +756,37 @@ async def setserverconfig(
     rcon_port: int,
     rcon_password: str,
     guild_id: str,
-    timezone: str
+    timezone: str,
+    thread_id: Optional[str] = None,
+    message_id: Optional[str] = None
 ):
-    # ✅ Validate timezone
+    #  Validate timezone
     if timezone not in available_timezones():
-        await interaction.response.send_message(f"❌ Invalid timezone: `{timezone}`\nSee: https://en.wikipedia.org/wiki/List_of_tz_database_time_zones", ephemeral=True)
+        await interaction.response.send_message(
+            f"❌ Invalid timezone: `{timezone}`\n"
+            f"See: https://en.wikipedia.org/wiki/List_of_tz_database_time_zones",
+            ephemeral=True
+        )
         return
 
+    #  Update config
     CONFIG["server_ip"] = server_ip
     CONFIG["server_port"] = server_port
     CONFIG["rcon_port"] = rcon_port
     CONFIG["rcon_password"] = rcon_password
     CONFIG["guild_id"] = int(guild_id)
-    CONFIG["timezone"] = timezone  # ✅ Save the timezone
+    CONFIG["timezone"] = timezone
+
+    # Optional
+    if thread_id:
+        CONFIG["thread_id"] = int(thread_id)
+    else:
+        CONFIG.pop("thread_id", None)
+
+    if message_id:
+        CONFIG["message_id"] = int(message_id)
+    else:
+        CONFIG.pop("message_id", None)
 
     try:
         await bot.tree.sync(guild=discord.Object(id=CONFIG["guild_id"]))
@@ -756,7 +801,7 @@ async def setserverconfig(
 async def purge(interaction: discord.Interaction, days: int):
     await interaction.response.defer(ephemeral=True)
 
-    # 🛡️ Admin check
+    #  Admin check
     if not interaction.user.guild_permissions.manage_messages:
         await interaction.followup.send("🚫 You need **Manage Messages** permission to use this command.", ephemeral=True)
         return
