@@ -71,6 +71,7 @@ or install these one by one via pip install
 - More optimizations!
 - Integrate the player more with the bot!
 - Dashboard GUI?
+- Monitor Server performance?!
 
 ---
 
