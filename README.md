@@ -47,26 +47,26 @@ pip install -r requirements.txt
 
 or install these one by one via pip install
 
-discord.py
-mcstatus
-python-dotenv
-mcrcon
-tzdata>=2024.1
+- discord.py
+- mcstatus
+- python-dotenv
+- mcrcon
+- tzdata>=2024.1
 
 🧾 Environment Variables
 .env DISCORD_TOKEN=your-bot-token-here           
 
 ---
 
-🧠 Tech Stack
+### 🧠 Tech Stack
     Discord.py (v2) – Slash commands, embeds
     MCRCON – Interfacing with the Minecraft server
     JSON – Lightweight data storage
 
-📣 Contributions
+### 📣 Contributions
 This is a private project, but you’re welcome to suggest improvements or request features. PRs are welcome with context.
 
-🧭 Future Ideas
+### 🧭 Future Ideas
 Event-based rewards (like birthdays or holidays!)
 /discord in Minecraft for server invite
 Weekly claim leaderboards
@@ -76,7 +76,7 @@ Dashboard GUI?
 
 ---
 
-🏁 License
+### 🏁 License
 MIT — Feel free to use, fork, or extend for your own server.
 
-Built with ❤️ for the Wanderlust Unbound Family of Mineacraft Modpacks.
+### Built with ❤️ for the Wanderlust Unbound Family of Mineacraft Modpacks.
