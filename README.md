@@ -42,15 +42,6 @@ Ensure the following are set via `/setserverconfig`:
 - Timezone (e.g., `Asia/Manila`)
 - Optional: Thread/message IDs for join instructions
 
-### 📁 Required Files
-You should have these files or create them:
-├── bot.py
-├── .env # Contains DISCORD_TOKEN
-├── bot_config.json # Auto-generated
-├── daily_rewards.json # Auto-generated, Define rewards for each streak day
-├── daily_claims.json # Auto-generated, Tracks user claim history
-├── linked_users.json # Auto-generated, Maps Discord users to Minecraft names
-
 ### 📦 Install Requirements
 pip install -r requirements.txt
 
