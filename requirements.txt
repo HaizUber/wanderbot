@@ -1,0 +1,5 @@
+discord.py
+mcstatus
+python-dotenv
+mcrcon
+tzdata>=2024.1
