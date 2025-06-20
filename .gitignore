@@ -8,11 +8,6 @@ __pycache__/
 *.log
 
 # === Virtual Environments ===
-venv/
-.env/
-.venv/
-env/
-ENV/
 .env
 
 # === Editors ===
