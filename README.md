@@ -53,23 +53,8 @@ or install these one by one via pip install
 - mcrcon
 - tzdata>=2024.1
 
-🧾 Environment Variables
-- .env DISCORD_TOKEN=your-bot-token-here           
-
-<details> <summary>Project Structure</summary>
-
-wanderbot/
-- ├── bot.py                 # Main bot script
-- ├── .env                  # Token (ignored by Git)
-- ├── bot_config.json       # Server + bot config
-- ├── data/                 # Persistent JSON files
-- │   ├── daily_claims.json     # Tracks user streaks
-- │   ├── daily_rewards.json    # Defines daily item rewards
-- │   └── linked_users.json     # Links Discord + MC usernames
-- ├── requirements.txt      # Dependencies
-- └── README.md             # You're reading this!
-
-</details>
+🧾 Create your Environment Variables
+- .env should contain DISCORD_TOKEN=your-bot-token-here           
 
 ### 🧠 Tech Stack
     Discord.py (v2) – Slash commands, embeds
