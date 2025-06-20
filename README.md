@@ -54,7 +54,7 @@ or install these one by one via pip install
 - tzdata>=2024.1
 
 🧾 Environment Variables
-.env DISCORD_TOKEN=your-bot-token-here           
+- .env DISCORD_TOKEN=your-bot-token-here           
 
 ---
 
