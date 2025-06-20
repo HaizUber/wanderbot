@@ -56,21 +56,20 @@ or install these one by one via pip install
 🧾 Environment Variables
 - .env DISCORD_TOKEN=your-bot-token-here           
 
-<details> <summary>Click to view</summary>
+<details> <summary>Project Structure</summary>
 
 wanderbot/
-├── bot.py                 # Main bot script
-├── .env                  # Token (ignored by Git)
-├── bot_config.json       # Server + bot config
-├── data/                 # Persistent JSON files
-│   ├── daily_claims.json     # Tracks user streaks
-│   ├── daily_rewards.json    # Defines daily item rewards
-│   └── linked_users.json     # Links Discord + MC usernames
-├── requirements.txt      # Dependencies
-└── README.md             # You're reading this!
+- ├── bot.py                 # Main bot script
+- ├── .env                  # Token (ignored by Git)
+- ├── bot_config.json       # Server + bot config
+- ├── data/                 # Persistent JSON files
+- │   ├── daily_claims.json     # Tracks user streaks
+- │   ├── daily_rewards.json    # Defines daily item rewards
+- │   └── linked_users.json     # Links Discord + MC usernames
+- ├── requirements.txt      # Dependencies
+- └── README.md             # You're reading this!
 
 </details>
----
 
 ### 🧠 Tech Stack
     Discord.py (v2) – Slash commands, embeds
