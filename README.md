@@ -64,19 +64,19 @@ or install these one by one via pip install
     JSON – Lightweight data storage
 
 ### 📣 Contributions
-This is a private project, but you’re welcome to suggest improvements or request features. PRs are welcome with context.
+- This is a private project, but you’re welcome to suggest improvements or request features. PRs are welcome with context.
 
 ### 🧭 Future Ideas
-Event-based rewards (like birthdays or holidays!)
-/discord in Minecraft for server invite
-Weekly claim leaderboards
-More optimizations!
-Integrate the player more with the bot!
-Dashboard GUI?
+- Event-based rewards (like birthdays or holidays!)
+- /discord in Minecraft for server invite
+- Weekly claim leaderboards
+- More optimizations!
+- Integrate the player more with the bot!
+- Dashboard GUI?
 
 ---
 
 ### 🏁 License
-MIT — Feel free to use, fork, or extend for your own server.
+- MIT — Feel free to use, fork, or extend for your own server.
 
 ### Built with ❤️ for the Wanderlust Unbound Family of Mineacraft Modpacks.
