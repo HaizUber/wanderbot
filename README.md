@@ -63,20 +63,9 @@ mcrcon
 tzdata>=2024.1
 
 🧾 Environment Variables
-.env DISCORD_TOKEN=your-bot-token-here
+.env DISCORD_TOKEN=your-bot-token-here           
 
-📁 Project Structure
-wanderbot/
-├── bot.py                   # Main bot script
-├── .env                     # Discord token (not tracked)
-├── bot_config.json          # Server config
-├── data/                    # Persistent bot data
-│   ├── daily_claims.json    # Streak tracking
-│   ├── daily_rewards.json   # Reward definitions
-│   └── linked_users.json    # MC–Discord mappings
-├── requirements.txt         # Python dependencies
-└── README.md                
-
+---
 
 🧠 Tech Stack
     Discord.py (v2) – Slash commands, embeds
@@ -93,6 +82,8 @@ Weekly claim leaderboards
 More optimizations!
 Integrate the player more with the bot!
 Dashboard GUI?
+
+---
 
 🏁 License
 MIT — Feel free to use, fork, or extend for your own server.
