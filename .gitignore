@@ -1,26 +1,13 @@
-# === Python ===
-__pycache__/
-*.py[cod]
-*.pyo
-*.pyd
-*.pdb
-*.pyc
-*.log
-
-# === Virtual Environments ===
 .env
 
-# === Editors ===
 .vscode/
 .idea/
 *.sublime-project
 *.sublime-workspace
 
-# === OS-specific ===
 .DS_Store
 Thumbs.db
 
-# === Minecraft Bot Configs ===
 bot_config.json
 daily_claims.json
 daily_rewards.json
@@ -29,27 +16,11 @@ linked_users.json
 *.db
 *.bak
 
-# === Token or Credentials Files ===
 *.secret
 token.txt
 *.key
 *.pem
 
-# === Logs ===
 logs/
 *.log
 
-# === Test Artifacts ===
-*.test.*
-test_results/
-coverage/
-htmlcov/
-
-# === Compiled Binaries (optional) ===
-build/
-dist/
-*.egg-info/
-
-# === Other ===
-*.rcon_cache
-*.pid

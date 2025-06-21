@@ -17,6 +17,8 @@ import datetime
 from discord import app_commands
 from zoneinfo import available_timezones, ZoneInfo
 from typing import Optional
+import aiohttp
+
 
 # Load environment
 load_dotenv()
@@ -100,6 +102,18 @@ STREAK_SOUNDS = {
     6: "minecraft:entity.ender_dragon.growl",
     7: "minecraft:entity.lightning_bolt.thunder"
 }
+
+FAREWELL_MESSAGES = [
+    "👋 Server's gone to sleep — guess I will too. Bye everyone!",
+    "🛑 Minecraft server powered off. Logging out until next time!",
+    "💤 The server took a nap... so I'm outta here!",
+    "🚪 Doors are shut, chunks unloaded. See you after the restart!",
+    "😴 Server's offline — time for me to dream of pixel sheep.",
+    "🌙 The night has fallen on the server... disconnecting now!",
+    "🎮 Minecraft said 'bye', so I'm dipping too. Catch you later!",
+    "📴 Server shutdown detected. Executing emergency nap protocol.",
+    "🥾 The server pulled the plug — and kicked me offline with it!"
+]
 
 intents = discord.Intents.default()
 intents.message_content = True
@@ -245,7 +259,7 @@ def start_server_watcher():
             time.sleep(CONFIG["server_check_interval"])
     threading.Thread(target=watch, daemon=True).start()
 
-async def get_minecraft_start_time_with_retry(delay=5):
+async def get_minecraft_start_time_with_retry(delay=20):
     attempt = 1
     while True:
         log_time = get_minecraft_start_time()
@@ -261,6 +275,9 @@ async def change_status():
         while True:
             await bot.change_presence(activity=discord.Game(next(status_msgs)))
             await asyncio.sleep(60)
+    except asyncio.CancelledError:
+        print("🛑 change_status task was cancelled during shutdown.")
+        return
     except (discord.ConnectionClosed, discord.HTTPException, aiohttp.ClientConnectionError) as e:
         print(f"⚠️ Connection lost while changing status: {e}")
 
@@ -309,15 +326,46 @@ async def wait_for_server_ready():
         i += 1
         await asyncio.sleep(10)
 
+async def monitor_server_shutdown():
+    await bot.wait_until_ready()
+    while True:
+        try:
+            status = query_server()
+            if not status.get("online"):
+                print("🔴 Detected server shutdown. Closing bot...")
+
+                # 📢 Send farewell message to Discord if status channel is set
+                if BotState.status_channel_id:
+                    channel = bot.get_channel(BotState.status_channel_id)
+                    if channel:
+                        try:
+                            goodbye = random.choice(FAREWELL_MESSAGES)
+                            await channel.send(f"{goodbye}")
+                        except Exception as e:
+                            print(f"⚠️ Failed to send shutdown message: {e}")
+
+                await bot.close()
+                break
+        except Exception as e:
+            print(f"⚠️ Error checking server status: {e}")
+        await asyncio.sleep(60)
+
 def load_daily_data():
-    if not os.path.exists(DAILY_REWARD_FILE):
+    if not os.path.exists(REWARD_FILE):
+        print(f"⚠️ {REWARD_FILE} not found!")
         return {}
-    with open(DAILY_REWARD_FILE, "r") as f:
-        return json.load(f)
+    with open(REWARD_FILE, "r") as f:
+        try:
+            data = json.load(f)
+            print(f"📦 Loaded daily rewards: {data}")
+            return data
+        except json.JSONDecodeError as e:
+            print(f"❌ Failed to parse {REWARD_FILE}: {e}")
+            return {}
 
 def save_daily_data(data):
-    os.makedirs(os.path.dirname(DAILY_REWARD_FILE), exist_ok=True)
-    with open(DAILY_REWARD_FILE, "w") as f:
+    os.makedirs(os.path.dirname(REWARD_FILE), exist_ok=True)
+    with open(REWARD_FILE, "w") as f:
         json.dump(data, f, indent=4)
 
 def get_streak_info(username: str):
@@ -535,22 +583,22 @@ async def on_ready():
         return
 
     try:
-        # 🌐 Sync global commands
+        # Sync global commands
         await bot.tree.sync()
         print("✅ Global slash commands synced.")
 
-        # 🔍 List global commands
+        # List global commands
         print("🌍 Global commands:")
         for cmd in bot.tree.get_commands():
             print(f" ├─ /{cmd.name} — {cmd.description}")
 
-        # 🛠️ Also sync to test guild for instant availability
+        # Also sync to test guild for instant availability
         if CONFIG["guild_id"]:
             guild = discord.Object(id=int(CONFIG["guild_id"]))
             await bot.tree.sync(guild=guild)
             print(f"✅ Slash commands also synced to test guild {CONFIG['guild_id']} for instant testing.")
 
-            # 🔍 List guild-specific commands
+            # List guild-specific commands
             guild_cmds = await bot.tree.fetch_commands(guild=guild)
             print(f"🛠️ Guild commands for {CONFIG['guild_id']}:")
             for cmd in guild_cmds:
@@ -587,6 +635,7 @@ async def on_ready():
     start_server_watcher()
     start_log_poller()
     bot.loop.create_task(wait_for_server_ready())
+    bot.loop.create_task(monitor_server_shutdown())
 
 @bot.event
 async def on_message(message):
@@ -897,31 +946,36 @@ async def confirm_purge(interaction: discord.Interaction):
     finally:
         del pending_purges[interaction.user.id]
         
-#/daily
+
 @bot.tree.command(name="forcesync", description="Force re-sync of all commands")
 async def forcesync(interaction: discord.Interaction):
     await bot.tree.sync(guild=discord.Object(id=int(CONFIG["guild_id"])))
     cmds = [cmd.name for cmd in bot.tree.get_commands()]
     await interaction.response.send_message(f"🔄 Synced commands: {', '.join(cmds)}", ephemeral=True)
-
+#/daily
 @bot.tree.command(name="daily", description="Claim your daily Minecraft login reward!")
 async def daily(interaction: discord.Interaction):
+    print("🔔 /daily command triggered")
     await interaction.response.defer(ephemeral=True)
 
     if interaction.channel.id != BotState.status_channel_id:
+        print("❌ Wrong channel used")
         await interaction.followup.send("❌ Please use this command in the Minecraft status channel.", ephemeral=True)
         return
 
     username = get_linked_username(interaction.user.id)
+    print(f"👤 Linked username: {username}")
     if not username:
         await interaction.followup.send("❌ You haven't linked your Minecraft username yet. Use `/linkmc`.", ephemeral=True)
         return
 
     can_claim, streak, now, last_claim = get_streak_info(username)
+    print(f"✅ Streak info — Can Claim: {can_claim}, Streak: {streak}, Now: {now}, Last Claim: {last_claim}")
 
     if not can_claim:
         tz_name = CONFIG.get("timezone", "UTC")
         tz = ZoneInfo(tz_name)
+        print(f"🕒 Claim denied — Using timezone: {tz_name}")
 
         if last_claim:
             next_claim_time = last_claim + datetime.timedelta(days=1)
@@ -932,25 +986,42 @@ async def daily(interaction: discord.Interaction):
             last_claim_local = last_claim.astimezone(tz)
             formatted_claim_time = last_claim_local.strftime('%Y-%m-%d %I:%M %p %Z')
 
+            print(f"🕒 Last claim at: {formatted_claim_time}, Next claim in: {hours}h {minutes}m")
             await interaction.followup.send(
                 f"🕒 You last claimed your daily reward on **{formatted_claim_time}**.\n"
                 f"⏳ You can claim again in **{hours}h {minutes}m**.",
                 ephemeral=True
             )
         else:
+            print("🕒 No record of last claim")
             await interaction.followup.send("🕒 You've already claimed your daily reward recently.", ephemeral=True)
+        return
+
+    print("🎁 Loading reward info")
+    daily_rewards = load_daily_data()
+    reward_day = min(streak, 7)
+    reward = daily_rewards.get(str(reward_day))
+
+    if not reward:
+        print(f"⚠️ No reward configured for day {reward_day}")
+        await interaction.followup.send("⚠️ No reward configured for this day.", ephemeral=True)
         return
 
     item_id = reward["item"]
     amount = reward["amount"]
     sound = STREAK_SOUNDS.get(reward_day, "minecraft:entity.player.levelup")
+    print(f"🎁 Reward for Day {streak}: {amount}x {item_id} | Sound: {sound}")
 
     try:
+        print("🔌 Connecting to RCON")
         with MCRcon(CONFIG["server_ip"], CONFIG["rcon_password"], port=CONFIG["rcon_port"]) as m:
+            print("✅ RCON connection successful")
             rcon_output = m.command("list")
             rcon_players = parse_rcon_list_output(rcon_output)["names"]
+            print(f"🧍 Online players: {rcon_players}")
 
             if username.lower() not in [n.lower() for n in rcon_players]:
+                print("❌ Player not online")
                 await interaction.followup.send(
                     f"❌ You are not currently online in Minecraft as **{username}**.\nPlease join the server first.",
                     ephemeral=True
@@ -958,20 +1029,16 @@ async def daily(interaction: discord.Interaction):
                 return
 
             try:
-                # 🔇 Disable command feedback
+                print("⚙️ Giving reward")
                 m.command("gamerule sendCommandFeedback false")
-
-                # 🎁 Give reward
                 m.command(f"execute as {username} run give {username} {item_id} {amount}")
-
-                # 🔊 Play sound
                 m.command(f"execute as {username} at {username} run playsound {sound} player {username} ~ ~ ~ 1 1")
 
-                # ✨ Fancy particles
+                print("✨ Playing particles")
                 for cmd in get_fancy_particle_commands(username):
                     m.command(cmd)
 
-                # 📰 Fancy broadcast
+                print("📢 Broadcasting reward message")
                 message_json = json.dumps([
                     {"text": "🎁 ", "color": "gold"},
                     {"text": f"{username}", "color": "yellow"},
@@ -987,15 +1054,19 @@ async def daily(interaction: discord.Interaction):
                 m.command(f'tellraw @a {message_json}')
 
             finally:
+                print("✅ Re-enabling command feedback")
                 m.command("gamerule sendCommandFeedback true")
 
+        print("✅ Reward delivered successfully")
         await interaction.followup.send(
             f"🎉 You received **{amount}x `{item_id}`** for your **Day {streak}** login streak!",
             ephemeral=True
         )
+        print("💾 Updating streak info")
         update_streak_info(username, now, streak)
 
     except Exception as e:
+        print(f"❌ Failed to issue reward: {e}")
         await interaction.followup.send(f"❌ Failed to issue reward: `{e}`", ephemeral=True)
 
 #/linkmc
