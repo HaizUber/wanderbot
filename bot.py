@@ -216,29 +216,40 @@ def get_minecraft_start_time():
     log_path = Path("H:/Wanderlust Unbound Lite Server/logs/latest.log")
     if not log_path.exists():
         print(f"⚠️ Could not find latest.log at: {log_path}")
-        return None
+    else:
+        try:
+            with open(log_path, "r", encoding="utf-8") as file:
+                for line in file:
+                    if "Done (" in line and "For help, type" in line:
+                        match = re.search(r'\[(\d{2}[A-Za-z]{3}\d{4}) (\d{2}:\d{2}:\d{2})\.\d+\]', line)
+                        if match:
+                            date_str = match.group(1)
+                            time_str = match.group(2)
+                            full_str = f"{date_str} {time_str}"
+                            try:
+                                dt = datetime.datetime.strptime(full_str, "%d%b%Y %H:%M:%S")
+                                return dt.timestamp()
+                            except ValueError as ve:
+                                print(f"⛔ Date parse error: {ve}")
+        except Exception as e:
+            print(f"❌ Error reading latest.log: {e}")
 
+    # 🔄 Fallback: Try RCON ping to determine if server is alive
+    print("🔁 Falling back to RCON ping...")
     try:
-        with open(log_path, "r", encoding="utf-8") as file:
-            for line in file:
-                if "Done (" in line and "For help, type" in line:
-                    # Match Forge-style timestamp: [19Jun2025 09:41:05.638]
-                    match = re.search(r'\[(\d{2}[A-Za-z]{3}\d{4}) (\d{2}:\d{2}:\d{2})\.\d+\]', line)
-                    if match:
-                        date_str = match.group(1)
-                        time_str = match.group(2)
-                        full_str = f"{date_str} {time_str}"
-                        try:
-                            dt = datetime.datetime.strptime(full_str, "%d%b%Y %H:%M:%S")
-                            return dt.timestamp()
-                        except ValueError as ve:
-                            print(f"⛔ Date parse error: {ve}")
-                            return None
-        print("⚠️ No server 'Done' line found in latest.log.")
-        return None
+        with MCRcon(CONFIG["server_ip"], CONFIG["rcon_password"], port=CONFIG["rcon_port"]) as m:
+            response = m.command("list")
+            if response:
+                print("✅ RCON responded successfully. Server is likely running.")
+                # Return current time as a fake "start" time fallback
+                return datetime.datetime.now().timestamp()
+            else:
+                print("⚠️ RCON command gave no response.")
     except Exception as e:
-        print(f"❌ Error reading latest.log: {e}")
-        return None
+        print(f"❌ RCON fallback failed: {e}")
+
+    print("❌ Could not determine server start status.")
+    return None
     
 def check_server_ready():
     try:
