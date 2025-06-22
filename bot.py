@@ -115,6 +115,21 @@ FAREWELL_MESSAGES = [
     "🥾 The server pulled the plug — and kicked me offline with it!"
 ]
 
+tz_name = CONFIG.get("timezone", "UTC")
+tz = ZoneInfo(tz_name)
+
+# Build today's 6:00 AM in that timezone
+now_utc = datetime.datetime.now(datetime.timezone.utc)
+today_local = now_utc.astimezone(tz)
+reset_time_local = today_local.replace(hour=6, minute=0, second=0, microsecond=0)
+
+# If it's past 6 AM already today, use tomorrow's reset time
+if today_local >= reset_time_local:
+    reset_time_local += datetime.timedelta(days=1)
+
+# Format: 6:00 AM PHT / 6:00 AM PST / etc.
+formatted_reset_time = reset_time_local.strftime("%I:%M %p %Z")
+
 intents = discord.Intents.default()
 intents.message_content = True
 bot = commands.Bot(command_prefix="!", intents=intents)
@@ -380,7 +395,17 @@ def save_daily_data(data):
         json.dump(data, f, indent=4)
 
 def get_streak_info(username: str):
-    now = datetime.datetime.now(datetime.timezone.utc)
+    tz_name = CONFIG.get("timezone", "UTC")
+    tz = ZoneInfo(tz_name)
+
+    # Get current time in correct timezone
+    now = datetime.datetime.now(datetime.timezone.utc).astimezone(tz)
+
+    # Get today's 6 AM in local time
+    today_6am = now.replace(hour=6, minute=0, second=0, microsecond=0)
+    if now < today_6am:
+        today_6am -= datetime.timedelta(days=1)
+
     if not os.path.exists(CLAIMS_FILE):
         return True, 1, now, None
 
@@ -392,11 +417,20 @@ def get_streak_info(username: str):
     streak = info.get("streak", 0)
 
     if last_claim:
-        last_dt = datetime.datetime.fromisoformat(last_claim)
-        delta = (now - last_dt).days
-        if delta < 1:
+        last_dt = datetime.datetime.fromisoformat(last_claim).astimezone(tz)
+
+        # Get 6 AM reference for last claim
+        last_6am = last_dt.replace(hour=6, minute=0, second=0, microsecond=0)
+        if last_dt < last_6am:
+            last_6am -= datetime.timedelta(days=1)
+
+        # If already claimed since last reset
+        if last_6am >= today_6am:
             return False, streak, now, last_dt
-        elif delta == 1:
+
+        # Determine if streak continues
+        days_between = (today_6am.date() - last_6am.date()).days
+        if days_between == 1:
             streak = min(streak + 1, 7)
         else:
             streak = 1
@@ -645,8 +679,9 @@ async def on_ready():
     # Start background services
     start_server_watcher()
     start_log_poller()
-    bot.loop.create_task(wait_for_server_ready())
     bot.loop.create_task(monitor_server_shutdown())
+    bot.loop.create_task(wait_for_server_ready())
+
 
 @bot.event
 async def on_message(message):
@@ -1060,7 +1095,8 @@ async def daily(interaction: discord.Interaction):
                     {"text": " in Discord to get yours.", "color": "gray"},
                     {"text": "\n(Link your account with ", "color": "dark_gray"},
                     {"text": "/linkmc <username>", "color": "blue"},
-                    {"text": ")", "color": "dark_gray"}
+                    {"text": ")", "color": "dark_gray"},
+                    {"text": f"\n⏰ Daily resets at {formatted_reset_time}", "color": "gray"}
                 ])
                 m.command(f'tellraw @a {message_json}')
 
