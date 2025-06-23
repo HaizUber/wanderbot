@@ -18,7 +18,7 @@ from discord import app_commands
 from zoneinfo import available_timezones, ZoneInfo
 from typing import Optional
 import aiohttp
-
+import gzip
 
 # Load environment
 load_dotenv()
@@ -27,6 +27,7 @@ TOKEN = os.getenv("DISCORD_TOKEN")
 class BotState:
     status_channel_id = None
     server_start_time = time.time()
+    
 
 CONFIG = {
     "server_ip": None,
@@ -228,12 +229,17 @@ def get_online_players_rcon():
         return {"count": -1, "names": []}
     
 def get_minecraft_start_time():
-    log_path = Path("H:/Wanderlust Unbound Lite Server/logs/latest.log")
-    if not log_path.exists():
-        print(f"⚠️ Could not find latest.log at: {log_path}")
-    else:
+    log_dir = Path("H:/Wanderlust Unbound Lite Server/logs")
+    log_files = sorted(log_dir.glob("*.log*"), key=os.path.getmtime, reverse=True)
+
+    def extract_start_time_from_log(path: Path):
         try:
-            with open(log_path, "r", encoding="utf-8") as file:
+            # 🧪 Determine if the file is gzipped based on extension
+            is_gzip = path.suffix == ".gz"
+            open_func = gzip.open if is_gzip else open
+            mode = "rt" if is_gzip else "r"
+
+            with open_func(path, mode, encoding="utf-8") as file:
                 for line in file:
                     if "Done (" in line and "For help, type" in line:
                         match = re.search(r'\[(\d{2}[A-Za-z]{3}\d{4}) (\d{2}:\d{2}:\d{2})\.\d+\]', line)
@@ -243,20 +249,29 @@ def get_minecraft_start_time():
                             full_str = f"{date_str} {time_str}"
                             try:
                                 dt = datetime.datetime.strptime(full_str, "%d%b%Y %H:%M:%S")
+                                print(f"🕰️ Boot time found in {path.name}: {full_str}")
                                 return dt.timestamp()
                             except ValueError as ve:
-                                print(f"⛔ Date parse error: {ve}")
+                                print(f"⛔ Date parse error in {path.name}: {ve}")
         except Exception as e:
-            print(f"❌ Error reading latest.log: {e}")
+            print(f"❌ Error reading {path.name}: {e}")
 
-    # 🔄 Fallback: Try RCON ping to determine if server is alive
+        return None
+
+    print("🔎 Searching for server start time in recent logs...")
+    for log_path in log_files[:5]:  
+        print(f"🔍 Scanning log file: {log_path.name}")
+        timestamp = extract_start_time_from_log(log_path)
+        if timestamp:
+            return timestamp
+
+    # 🔄 Fallback: Try RCON ping1
     print("🔁 Falling back to RCON ping...")
     try:
         with MCRcon(CONFIG["server_ip"], CONFIG["rcon_password"], port=CONFIG["rcon_port"]) as m:
             response = m.command("list")
             if response:
                 print("✅ RCON responded successfully. Server is likely running.")
-                # Return current time as a fake "start" time fallback
                 return datetime.datetime.now().timestamp()
             else:
                 print("⚠️ RCON command gave no response.")
@@ -590,23 +605,39 @@ async def send_to_discord_chat(message):
 def start_log_poller():
     log_path = Path("H:/Wanderlust Unbound Lite Server/logs/latest.log")
     if not log_path.exists():
-        print(f" Could not find log file at: {log_path}")
+        print(f"❌ Could not find log file at: {log_path}")
         return
 
     def poll():
         print(f"📂 Polling log file: {log_path}")
-        with open(log_path, "r", encoding="utf-8") as file:
-            file.seek(0, os.SEEK_END)
-            while True:
-                try:
-                    line = file.readline()
-                    if line:
-                        handle_log_line(line.strip())
-                    else:
-                        time.sleep(CONFIG["log_poll_interval"])
-                except Exception as e:
-                    print(f" Log read error: {e}")
-                    time.sleep(5)
+        last_inode = None
+        file = None
+
+        while True:
+            try:
+                if not log_path.exists():
+                    time.sleep(1)
+                    continue
+
+                stat = os.stat(log_path)
+                inode = (stat.st_ino, stat.st_dev)  # Unique file ID
+
+                if inode != last_inode:
+                    if file:
+                        file.close()
+                    file = open(log_path, "r", encoding="utf-8")
+                    file.seek(0, os.SEEK_END)
+                    last_inode = inode
+                    print(f"🔁 Detected log rotation — reopened: {log_path}")
+
+                line = file.readline()
+                if line:
+                    handle_log_line(line.strip())
+                else:
+                    time.sleep(CONFIG.get("log_poll_interval", 1))
+            except Exception as e:
+                print(f"❌ Log poller error: {e}")
+                time.sleep(5)
 
     threading.Thread(target=poll, daemon=True).start()
 
@@ -1024,20 +1055,27 @@ async def daily(interaction: discord.Interaction):
         print(f"🕒 Claim denied — Using timezone: {tz_name}")
 
         if last_claim:
-            next_claim_time = last_claim + datetime.timedelta(days=1)
-            remaining = next_claim_time - now
+            now = now.astimezone(tz)
+            last_claim_local = last_claim.astimezone(tz)
+
+            # Compute next 6:00 AM after last claim
+            next_reset = now.replace(hour=6, minute=0, second=0, microsecond=0)
+            if now >= next_reset:
+                next_reset += datetime.timedelta(days=1)
+
+            remaining = next_reset - now
             hours, remainder = divmod(int(remaining.total_seconds()), 3600)
             minutes = remainder // 60
 
-            last_claim_local = last_claim.astimezone(tz)
             formatted_claim_time = last_claim_local.strftime('%Y-%m-%d %I:%M %p %Z')
-
             print(f"🕒 Last claim at: {formatted_claim_time}, Next claim in: {hours}h {minutes}m")
+
             await interaction.followup.send(
                 f"🕒 You last claimed your daily reward on **{formatted_claim_time}**.\n"
                 f"⏳ You can claim again in **{hours}h {minutes}m**.",
                 ephemeral=True
             )
+
         else:
             print("🕒 No record of last claim")
             await interaction.followup.send("🕒 You've already claimed your daily reward recently.", ephemeral=True)
